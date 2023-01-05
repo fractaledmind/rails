@@ -94,7 +94,7 @@ module Rails
             when options.blank?
               [ type, {} ]
             when %w[string text binary integer].include?(type) && options.match?(/^\d+$/)
-              [ type.to_sym, limit: options.to_i ]
+              [ type, limit: options.to_i ]
             when %w[decimal numeric].include?(type) && options.match?(/^(\d+)[,.-](\d+)$/)
               precision, scale = options.split(/[,.-]/)
               [ :decimal, precision: precision.to_i, scale: scale.to_i ]
