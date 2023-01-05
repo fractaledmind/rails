@@ -451,6 +451,54 @@ class MigrationGeneratorTest < Rails::Generators::TestCase
     end
   end
 
+  def test_add_migration_with_key_value_attribute_options
+    migration = "add_title_and_description_to_messages"
+    run_generator [migration, "title:string{null=false}", "description:text{default='hello, world!'}"]
+
+    assert_migration "db/migrate/#{migration}.rb" do |content|
+      assert_method :change, content do |change|
+        assert_match(/add_column :messages, :title, :string, null: false/, change)
+        assert_match(/add_column :messages, :description, :text, default: "hello, world!"/, change)
+      end
+    end
+  end
+
+  def test_add_migration_ignores_unknown_key_value_attribute_options
+    migration = "add_title_to_messages"
+    run_generator [migration, "title:string{null=false,foo=bar}"]
+
+    assert_migration "db/migrate/#{migration}.rb" do |content|
+      assert_method :change, content do |change|
+        assert_match(/add_column :messages, :title, :string, null: false/, change)
+      end
+    end
+  end
+
+  def test_add_migration_with_attributes_index_declaration_and_key_value_attribute_options
+    migration = "add_fields_to_books"
+    run_generator [
+      migration,
+      "title:string{limit=40,null=false,default=''}:index",
+      "content:string{limit=255,null=true}",
+      "price:decimal{precision=1,scale=2,null=false,default=0}:index",
+      "discount:decimal{precision=3,scale=4}:uniq",
+      "tags:text{array,null=false,default=[]}"
+    ]
+
+    assert_migration "db/migrate/#{migration}.rb" do |content|
+      assert_method :change, content do |change|
+        assert_match(/add_column :books, :title, :string, limit: 40, null: false, default: ""/, change)
+        assert_match(/add_column :books, :content, :string, limit: 255, null: true/, change)
+        assert_match(/add_column :books, :price, :decimal, precision: 1, scale: 2, null: false, default: 0/, change)
+        assert_match(/add_column :books, :discount, :decimal, precision: 3, scale: 4/, change)
+        assert_match(/add_column :books, :tags, :text, array: true, null: false, default: \[\]/, change)
+      end
+      assert_match(/add_index :books, :title/, content)
+      assert_match(/add_index :books, :price/, content)
+      assert_match(/add_index :books, :discount, unique: true/, content)
+    end
+  end
+
   private
     def with_singular_table_name
       old_state = ActiveRecord::Base.pluralize_table_names

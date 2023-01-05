@@ -26,6 +26,14 @@ module Rails
         timestamp
         token
       )
+      AVAILABLE_OPTIONS = %w(
+        limit
+        default
+        null
+        precision
+        scale
+        array
+      )
 
       attr_accessor :name, :type
       attr_reader   :attr_options
@@ -88,6 +96,29 @@ module Rails
               options = Hash[provided_options.map { |opt| [opt.to_sym, true] }]
 
               return type, options
+            when /(.+)\{(.+)\}/
+              type = $1
+              # regex to match commas that are not inside quotes.
+              # this allows values like for `default` that are strings with commas
+              # e.g. `text{default='hello, world!'}`
+              options = $2.split(/,(?![^'"]*['"][^'"]*$)/)
+                          .filter_map do |opt|
+                key, val = opt.split("=")
+                next unless AVAILABLE_OPTIONS.include?(key)
+                val = case val
+                      when "true" then true
+                      when "false" then false
+                      when "[]" then []
+                      when "{}" then {}
+                      when /^['"].*['"]$/ then val[1...-1]
+                      when nil then true
+                      when /\A\d+\z/ then Integer(val)
+                      else val
+                end
+                [key.to_sym, val]
+              end
+
+              return type, Hash[options]
             else
               return type, {}
             end
