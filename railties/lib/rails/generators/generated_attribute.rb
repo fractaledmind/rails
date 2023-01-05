@@ -26,6 +26,8 @@ module Rails
         timestamp
         token
       )
+      TYPE_WITH_OPTIONS_RE = /([^{]+)\{(.+)\}/
+      COMMA_WRAPPED_BY_QUOTES_RE = /,(?![^'"]*['"][^'"]*$)/
       AVAILABLE_OPTIONS = %w(
         limit
         default
@@ -33,6 +35,8 @@ module Rails
         precision
         scale
         array
+        polymorphic
+        foreign_key
       )
 
       attr_accessor :name, :type
@@ -84,43 +88,57 @@ module Rails
         private
           # parse possible attribute options like :limit for string/text/binary/integer, :precision/:scale for decimals or :polymorphic for references/belongs_to
           # when declaring options curly brackets should be used
-          def parse_type_and_options(type)
-            case type
+          def parse_type_and_options(type_with_possible_options)
+            return type_with_possible_options, {} unless type_with_possible_options&.match?(TYPE_WITH_OPTIONS_RE)
+
+            case type_with_possible_options
             when /(string|text|binary|integer)\{(\d+)\}/
               return $1, limit: $2.to_i
             when /decimal\{(\d+)[,.-](\d+)\}/
               return :decimal, precision: $1.to_i, scale: $2.to_i
-            when /(references|belongs_to)\{(.+)\}/
-              type = $1
-              provided_options = $2.split(/[,.-]/)
-              options = Hash[provided_options.map { |opt| [opt.to_sym, true] }]
+            end
 
-              return type, options
-            when /(.+)\{(.+)\}/
-              type = $1
-              # regex to match commas that are not inside quotes.
-              # this allows values like for `default` that are strings with commas
-              # e.g. `text{default='hello, world!'}`
-              options = $2.split(/,(?![^'"]*['"][^'"]*$)/)
-                          .filter_map do |opt|
-                key, val = opt.split("=")
-                next unless AVAILABLE_OPTIONS.include?(key)
-                val = case val
-                      when "true" then true
-                      when "false" then false
-                      when "[]" then []
-                      when "{}" then {}
-                      when /^['"].*['"]$/ then val[1...-1]
-                      when nil then true
-                      when /\A\d+\z/ then Integer(val)
-                      else val
-                end
-                [key.to_sym, val]
-              end
+            type, provided_options = type_with_possible_options.match(TYPE_WITH_OPTIONS_RE).captures
+            attr_options = parse_attr_options(provided_options)
 
-              return type, Hash[options]
+            return type, Hash[attr_options].deep_symbolize_keys
+          end
+
+          def parse_attr_options(options_str)
+            # this allows values like for `default` that are strings with commas
+            # e.g. `text{default='hello, world!'}`
+            provided_options = options_str.split(COMMA_WRAPPED_BY_QUOTES_RE)
+            provided_options.filter_map do |option|
+              key, value = parse_attr_option(option)
+
+              next unless AVAILABLE_OPTIONS.include?(key)
+
+              [key, value]
+            end
+          end
+
+          def parse_attr_option(option)
+            if option.match(/(.+)=\{(.+)\}/)
+              key, nested_opt = $1, $2
+
+              [key, Hash[*parse_attr_option(nested_opt)]]
             else
-              return type, {}
+              key, val = option.split("=")
+
+              [key, parse_attr_value(val)]
+            end
+          end
+
+          def parse_attr_value(value)
+            case value
+            when "true"         then true
+            when "false"        then false
+            when "[]"           then []
+            when "{}"           then {}
+            when /^['"].*['"]$/ then value[1...-1]
+            when nil            then true
+            when /\A\d+\z/      then Integer(value)
+            else value
             end
           end
       end
@@ -254,7 +272,7 @@ module Rails
           end
 
           if reference? && !polymorphic?
-            options[:foreign_key] = true
+            options[:foreign_key] ||= true
           end
         end
       end

@@ -499,6 +499,19 @@ class MigrationGeneratorTest < Rails::Generators::TestCase
     end
   end
 
+  def test_add_migration_with_nested_key_value_attribute_options
+    migration = "add_title_to_messages"
+    run_generator [migration, "owner:references{foreign_key={table_name=users}}"]
+
+    assert_migration "db/migrate/#{migration}.rb" do |content|
+      assert_method :change, content do |change|
+        assert_match(/add_reference :messages, :owner, foreign_key: {:table_name=>"users"}, null: false/, change)
+      end
+    end
+  end
+
+  ""
+
   private
     def with_singular_table_name
       old_state = ActiveRecord::Base.pluralize_table_names
