@@ -90,18 +90,17 @@ module Rails
           # parse possible attribute options like :limit for string/text/binary/integer, :precision/:scale for decimals or :polymorphic for references/belongs_to
           # when declaring options curly brackets should be used
           def parse_type_and_options(type, options)
-            return type, {} if options.blank?
-
-            if type.presence_in(%w(string text binary integer)) && options.match?(/^\d+$/)
-              return type.to_sym, limit: options.to_i
-            elsif type.presence_in(%w(decimal numeric)) && options.match?(/^(\d+)[,.-](\d+)$/)
+            case
+            when options.blank?
+              [ type, {} ]
+            when %w[string text binary integer].include?(type) && options.match?(/^\d+$/)
+              [ type.to_sym, limit: options.to_i ]
+            when %w[decimal numeric].include?(type) && options.match?(/^(\d+)[,.-](\d+)$/)
               precision, scale = options.split(/[,.-]/)
-              return :decimal, precision: precision.to_i, scale: scale.to_i
+              [ :decimal, precision: precision.to_i, scale: scale.to_i ]
+            else
+              [ type, parse_attr_options(options).to_h.deep_symbolize_keys ]
             end
-
-            attr_options = parse_attr_options(options)
-
-            return type, Hash[attr_options].deep_symbolize_keys
           end
 
           def parse_attr_options(options_str)
