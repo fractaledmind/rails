@@ -136,7 +136,7 @@ module Rails
             when "{}"           then {}
             when /^['"].*['"]$/ then value[1...-1]
             when nil            then true
-            when /\A\d+\z/      then Integer(value)
+            when /^\d+$/      then Integer(value)
             else value
             end
           end
