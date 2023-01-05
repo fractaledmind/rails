@@ -26,8 +26,6 @@ module Rails
         timestamp
         token
       )
-      COLON_NOT_CONTAINED_WITHIN_BRACES_RE = /:(?![^{]*\})/
-      TYPE_WITH_OPTIONS_RE = /([^{]+)\{(.+)\}/
       COMMA_NOT_CONTAINED_WITHIN_QUOTES_RE = /,(?![^'"]*['"][^'"]*$)/
       AVAILABLE_OPTIONS = %w(
         limit
