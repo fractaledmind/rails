@@ -26,8 +26,9 @@ module Rails
         timestamp
         token
       )
+      COLON_NOT_CONTAINED_WITHIN_BRACES_RE = /:(?![^{]*\})/
       TYPE_WITH_OPTIONS_RE = /([^{]+)\{(.+)\}/
-      COMMA_WRAPPED_BY_QUOTES_RE = /,(?![^'"]*['"][^'"]*$)/
+      COMMA_NOT_CONTAINED_WITHIN_QUOTES_RE = /,(?![^'"]*['"][^'"]*$)/
       AVAILABLE_OPTIONS = %w(
         limit
         default
@@ -45,14 +46,16 @@ module Rails
 
       class << self
         def parse(column_definition)
-          name, type, index_type = column_definition.split(":")
+          optionless_column_definition = column_definition.sub(/\{(.+)\}/, "")
+          name, type, index_type = optionless_column_definition.split(":")
+          column_options = column_definition[/\{(.+)\}/, 1]
 
           # if user provided "name:index" instead of "name:string:index"
           # type should be set blank so GeneratedAttribute's constructor
           # could set it to :string
           index_type, type = type, nil if valid_index_type?(type)
 
-          type, attr_options = *parse_type_and_options(type)
+          type, attr_options = *parse_type_and_options(type, column_options)
           type = type.to_sym if type
 
           if type && !valid_type?(type)
@@ -88,18 +91,17 @@ module Rails
         private
           # parse possible attribute options like :limit for string/text/binary/integer, :precision/:scale for decimals or :polymorphic for references/belongs_to
           # when declaring options curly brackets should be used
-          def parse_type_and_options(type_with_possible_options)
-            return type_with_possible_options, {} unless type_with_possible_options&.match?(TYPE_WITH_OPTIONS_RE)
+          def parse_type_and_options(type, options)
+            return type, {} if options.blank?
 
-            case type_with_possible_options
-            when /(string|text|binary|integer)\{(\d+)\}/
-              return $1, limit: $2.to_i
-            when /decimal\{(\d+)[,.-](\d+)\}/
-              return :decimal, precision: $1.to_i, scale: $2.to_i
+            if type.presence_in(%w(string text binary integer)) && options.match?(/^\d+$/)
+              return type.to_sym, limit: options.to_i
+            elsif type.presence_in(%w(decimal numeric)) && options.match?(/^(\d+)[,.-](\d+)$/)
+              precision, scale = options.split(/[,.-]/)
+              return :decimal, precision: precision.to_i, scale: scale.to_i
             end
 
-            type, provided_options = type_with_possible_options.match(TYPE_WITH_OPTIONS_RE).captures
-            attr_options = parse_attr_options(provided_options)
+            attr_options = parse_attr_options(options)
 
             return type, Hash[attr_options].deep_symbolize_keys
           end
@@ -107,7 +109,7 @@ module Rails
           def parse_attr_options(options_str)
             # this allows values like for `default` that are strings with commas
             # e.g. `text{default='hello, world!'}`
-            provided_options = options_str.split(COMMA_WRAPPED_BY_QUOTES_RE)
+            provided_options = options_str.split(COMMA_NOT_CONTAINED_WITHIN_QUOTES_RE)
             provided_options.filter_map do |option|
               key, value = parse_attr_option(option)
 
@@ -118,12 +120,12 @@ module Rails
           end
 
           def parse_attr_option(option)
-            if option.match(/(.+)=\{(.+)\}/)
+            if option.match(/(.+):\{(.+)\}/)
               key, nested_opt = $1, $2
 
               [key, Hash[*parse_attr_option(nested_opt)]]
             else
-              key, val = option.split("=")
+              key, val = option.split(":")
 
               [key, parse_attr_value(val)]
             end

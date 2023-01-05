@@ -453,7 +453,7 @@ class MigrationGeneratorTest < Rails::Generators::TestCase
 
   def test_add_migration_with_key_value_attribute_options
     migration = "add_title_and_description_to_messages"
-    run_generator [migration, "title:string{null=false}", "description:text{default='hello, world!'}"]
+    run_generator [migration, "title:string{null:false}", "description:text{default:'hello, world!'}"]
 
     assert_migration "db/migrate/#{migration}.rb" do |content|
       assert_method :change, content do |change|
@@ -465,7 +465,7 @@ class MigrationGeneratorTest < Rails::Generators::TestCase
 
   def test_add_migration_ignores_unknown_key_value_attribute_options
     migration = "add_title_to_messages"
-    run_generator [migration, "title:string{null=false,foo=bar}"]
+    run_generator [migration, "title:string{null:false,foo:bar}"]
 
     assert_migration "db/migrate/#{migration}.rb" do |content|
       assert_method :change, content do |change|
@@ -478,11 +478,11 @@ class MigrationGeneratorTest < Rails::Generators::TestCase
     migration = "add_fields_to_books"
     run_generator [
       migration,
-      "title:string{limit=40,null=false,default=''}:index",
-      "content:string{limit=255,null=true}",
-      "price:decimal{precision=1,scale=2,null=false,default=0}:index",
-      "discount:decimal{precision=3,scale=4}:uniq",
-      "tags:text{array,null=false,default=[]}"
+      "title:string{limit:40,null:false,default:''}:index",
+      "content:string{limit:255,null:true}",
+      "price:decimal{precision:1,scale:2,null:false,default:0}:index",
+      "discount:decimal{precision:3,scale:4}:uniq",
+      "tags:text{array,null:false,default:[]}"
     ]
 
     assert_migration "db/migrate/#{migration}.rb" do |content|
@@ -501,7 +501,7 @@ class MigrationGeneratorTest < Rails::Generators::TestCase
 
   def test_add_migration_with_nested_key_value_attribute_options
     migration = "add_title_to_messages"
-    run_generator [migration, "owner:references{foreign_key={table_name=users}}"]
+    run_generator [migration, "owner:references{foreign_key:{table_name:users}}"]
 
     assert_migration "db/migrate/#{migration}.rb" do |content|
       assert_method :change, content do |change|
