@@ -106,7 +106,7 @@ module Rails
 
           def parse_attr_options(options_str)
             # this allows values like for `default` that are strings with commas
-            # e.g. `text{default='hello, world!'}`
+            # e.g. `text{default:'hello, world!'}`
             provided_options = options_str.split(COMMA_NOT_CONTAINED_WITHIN_QUOTES_RE)
             provided_options.filter_map do |option|
               key, value = parse_attr_option(option)
