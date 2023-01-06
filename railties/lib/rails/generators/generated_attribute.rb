@@ -37,6 +37,7 @@ module Rails
         array
         polymorphic
         foreign_key
+        if_exists
       )
       AVAILABLE_INDEX_OPTIONS = %w(
         unique
@@ -67,7 +68,7 @@ module Rails
           # could set it to :string
           index_type, type = type, nil if valid_index_type?(type)
 
-          column_options_definition = (column_definition[/#{type}\{(.+)\}(?:$|:)/, 1] if type) || {}
+          column_options_definition = (column_definition[/#{type}\{(.+?)\}(?:$|:)/, 1] if type) || {}
           index_options_definition = (column_definition[/#{index_type}\{(.+?)\}$/, 1] if index_type) || {}
 
           type, attr_options = *parse_column_type_and_options(type, column_options_definition)

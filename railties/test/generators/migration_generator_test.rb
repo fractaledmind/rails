@@ -463,6 +463,29 @@ class MigrationGeneratorTest < Rails::Generators::TestCase
     end
   end
 
+  def test_create_table_migration_with_key_value_attribute_options
+    run_generator ["create_messages", "title:string{null:false}", "description:text{default:'hello, world!'}"]
+    assert_migration "db/migrate/create_messages.rb" do |content|
+      assert_method :change, content do |change|
+        assert_match(/create_table :messages/, change)
+        assert_match(/  t\.string :title, null: false/, change)
+        assert_match(/  t\.text :description, default: "hello, world!"/, change)
+      end
+    end
+  end
+
+  def test_remove_migration_with_key_value_attribute_options
+    migration = "remove_content_from_messages"
+    run_generator [migration, "title:string{null:false}", "description:text{default:'hello, world!'}"]
+
+    assert_migration "db/migrate/#{migration}.rb" do |content|
+      assert_method :change, content do |change|
+        assert_match(/remove_column :messages, :title, :string, null: false/, change)
+        assert_match(/remove_column :messages, :description, :text, default: "hello, world!"/, change)
+      end
+    end
+  end
+
   def test_add_migration_ignores_unknown_key_value_attribute_options
     migration = "add_title_to_messages"
     run_generator [migration, "title:string{null:false,foo:bar}"]
@@ -470,6 +493,27 @@ class MigrationGeneratorTest < Rails::Generators::TestCase
     assert_migration "db/migrate/#{migration}.rb" do |content|
       assert_method :change, content do |change|
         assert_match(/add_column :messages, :title, :string, null: false/, change)
+      end
+    end
+  end
+
+  def test_create_table_migration_ignores_unknown_key_value_attribute_options
+    run_generator ["create_messages", "title:string{null:false,foo:bar}"]
+    assert_migration "db/migrate/create_messages.rb" do |content|
+      assert_method :change, content do |change|
+        assert_match(/create_table :messages/, change)
+        assert_match(/  t\.string :title, null: false/, change)
+      end
+    end
+  end
+
+  def test_remove_migration_ignores_unknown_key_value_attribute_options
+    migration = "remove_content_from_messages"
+    run_generator [migration, "title:string{null:false,foo:bar}"]
+
+    assert_migration "db/migrate/#{migration}.rb" do |content|
+      assert_method :change, content do |change|
+        assert_match(/remove_column :messages, :title, :string, null: false/, change)
       end
     end
   end
@@ -499,16 +543,89 @@ class MigrationGeneratorTest < Rails::Generators::TestCase
     end
   end
 
-  def test_add_migration_with_nested_key_value_attribute_options
-    migration = "add_title_to_messages"
-    run_generator [migration, "owner:references{foreign_key:{table_name:users}}"]
+  def test_create_table_migration_with_attributes_index_declaration_and_key_value_attribute_options
+    migration = "create_messages"
+    run_generator [
+      migration,
+      "title:string{limit:40,null:false,default:''}:index",
+      "content:string{limit:255,null:true}",
+      "price:decimal{precision:1,scale:2,null:false,default:0}:index",
+      "discount:decimal{precision:3,scale:4}:uniq",
+      "tags:text{array,null:false,default:[]}"
+    ]
+    assert_migration "db/migrate/#{migration}.rb" do |content|
+      assert_method :change, content do |change|
+        assert_match(/create_table :messages/, change)
+        assert_match(/  t\.string :title, limit: 40, null: false, default: ""/, change)
+        assert_match(/  t\.string :content, limit: 255, null: true/, change)
+        assert_match(/  t\.decimal :price, precision: 1, scale: 2, null: false, default: 0/, change)
+        assert_match(/  t\.decimal :discount, precision: 3, scale: 4/, change)
+        assert_match(/  t\.text :tags, array: true, null: false, default: \[\]/, change)
+      end
+      assert_match(/add_index :messages, :title/, content)
+      assert_match(/add_index :messages, :price/, content)
+      assert_match(/add_index :messages, :discount, unique: true/, content)
+    end
+  end
+
+  def test_remove_migration_with_attributes_index_declaration_and_key_value_attribute_options
+    migration = "remove_content_from_messages"
+    run_generator [
+      migration,
+      "title:string{limit:40,null:false,default:''}:index",
+      "content:string{limit:255,null:true}",
+      "price:decimal{precision:1,scale:2,null:false,default:0}:index",
+      "discount:decimal{precision:3,scale:4}:uniq",
+      "tags:text{array,null:false,default:[]}"
+    ]
+
+    assert_migration "db/migrate/#{migration}.rb" do |content|
+      assert_method :change, content do |change|
+        assert_match(/remove_column :messages, :title, :string, limit: 40, null: false, default: ""/, change)
+        assert_match(/remove_column :messages, :content, :string, limit: 255, null: true/, change)
+        assert_match(/remove_column :messages, :price, :decimal, precision: 1, scale: 2, null: false, default: 0/, change)
+        assert_match(/remove_column :messages, :discount, :decimal, precision: 3, scale: 4/, change)
+        assert_match(/remove_column :messages, :tags, :text, array: true, null: false, default: \[\]/, change)
+
+        assert_match(/remove_index :messages, :title/, change)
+        assert_match(/remove_index :messages, :price/, change)
+        assert_match(/remove_index :messages, :discount, unique: true/, change)
+      end
+    end
+  end
+
+  def test_add_migration_with_nested_key_value_attribute_options_and_index_options_ignores_index_options
+    migration = "add_owner_to_messages"
+    run_generator [migration, "owner:references{foreign_key:{table_name:users}}:uniq{length:{name:10,surname:15}}"]
 
     assert_migration "db/migrate/#{migration}.rb" do |content|
       assert_method :change, content do |change|
         assert_match(/add_reference :messages, :owner, foreign_key: {:table_name=>"users"}, null: false/, change)
       end
+      assert_no_match(/add_index :messages, :owner, unique: true, length: {name: 10, surname:15}/, content)
     end
   end
+
+  # def test_create_table_migration_ignores_unknown_key_value_attribute_options
+  #   run_generator ["create_messages", "title:string{null:false,foo:bar}"]
+  #   assert_migration "db/migrate/create_messages.rb" do |content|
+  #     assert_method :change, content do |change|
+  #       assert_match(/create_table :messages/, change)
+  #       assert_match(/  t\.string :title, null: false/, change)
+  #     end
+  #   end
+  # end
+  #
+  # def test_remove_migration_ignores_unknown_key_value_attribute_options
+  #   migration = "remove_content_from_messages"
+  #   run_generator [migration, "title:string{null:false,foo:bar}"]
+  #
+  #   assert_migration "db/migrate/#{migration}.rb" do |content|
+  #     assert_method :change, content do |change|
+  #       assert_match(/remove_column :messages, :title, :string, null: false/, change)
+  #     end
+  #   end
+  # end
 
   def test_add_migration_with_key_value_index_options
     migration = "add_title_to_messages"
