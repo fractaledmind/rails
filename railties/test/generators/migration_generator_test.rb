@@ -510,7 +510,37 @@ class MigrationGeneratorTest < Rails::Generators::TestCase
     end
   end
 
-  ""
+  def test_add_migration_with_key_value_index_options
+    migration = "add_title_to_messages"
+    run_generator [migration, "title:string:uniq{name:by_title}"]
+
+    assert_migration "db/migrate/#{migration}.rb" do |content|
+      assert_method :change, content do |change|
+        assert_match(/add_column :messages, :title, :string/, change)
+      end
+      assert_match(/add_index :messages, :title, name: "by_title", unique: true/, content)
+    end
+  end
+
+  # "owner:references{foreign_key:{table_name:users},null:false}:uniq{using:btree}"
+  # "owner:references{foreign_key:{table_name:users},null:false}:uniq"
+  # name:string, name:string:uniq, name:uniq, name:string{null:false}:uniq, and name:string{null:false}
+  # unique: true
+  # unique: true, name: 'by_branch_party'
+  # name: 'by_name', length: 10
+  # name: 'by_name_surname', length: {name: 10, surname: 15}
+  # order: {branch_id: :desc, party_id: :asc}
+  # unique: true, where: "active"
+  # using: 'btree'
+  # using: 'gist', opclass: :gist_trgm_ops
+  # using: 'gist', opclass: { city: :gist_trgm_ops }
+  # type: :fulltext
+  # algorithm: :concurrently
+  # "owner:references:index"
+  # "owner:references:uniq"
+  # "owner:references:uniq{name:by_branch_party}"
+  # "owner:references{foreign_key:{table_name:users},null:false}:index"
+  # "owner:references{foreign_key:{table_name:users},null:false}:uniq{name:by_name_surname,length:{name:10,surname:15},order:{name:desc,surname:asc}}"
 
   private
     def with_singular_table_name

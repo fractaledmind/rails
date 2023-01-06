@@ -67,16 +67,8 @@ module Rails
           # could set it to :string
           index_type, type = type, nil if valid_index_type?(type)
 
-          column_options_definition = if type
-            column_definition[/#{type}\{(.+)\}(?:$|:)/, 1]
-          else
-            {}
-          end
-          index_options_definition = if index_type
-            column_definition[/#{index_type}\{(.+?)\}$/, 1] || {}
-          else
-            {}
-          end
+          column_options_definition = (column_definition[/#{type}\{(.+)\}(?:$|:)/, 1] if type) || {}
+          index_options_definition = (column_definition[/#{index_type}\{(.+?)\}$/, 1] if index_type) || {}
 
           type, attr_options = *parse_column_type_and_options(type, column_options_definition)
           index_options = parse_index_type_and_options(index_type, index_options_definition)
@@ -193,7 +185,7 @@ module Rails
         @has_index      = !!index_options
         @has_uniq_index = index_options.is_a?(Hash) && index_options.key?(:unique) && index_options[:unique]
         @attr_options   = attr_options
-        @index_options  = index_options
+        @index_options  = index_options || {}
       end
 
       def field_type
@@ -307,7 +299,8 @@ module Rails
       end
 
       def inject_index_options
-        has_uniq_index? ? ", unique: true" : ""
+        # has_uniq_index? ? ", unique: true" : ""
+        (+"").tap { |s| @index_options&.each { |k, v| s << ", #{k}: #{v.inspect}" } }
       end
 
       def options_for_migration
