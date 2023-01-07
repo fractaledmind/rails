@@ -184,7 +184,6 @@ module Rails
         @name           = name
         @type           = type || :string
         @has_index      = !!index_options
-        @has_uniq_index = index_options.is_a?(Hash) && index_options.key?(:unique) && index_options[:unique]
         @attr_options   = attr_options
         @index_options  = index_options || {}
       end
@@ -267,10 +266,6 @@ module Rails
         @has_index
       end
 
-      def has_uniq_index?
-        @has_uniq_index
-      end
-
       def password_digest?
         name == "password" && type == :digest
       end
@@ -300,7 +295,6 @@ module Rails
       end
 
       def inject_index_options
-        # has_uniq_index? ? ", unique: true" : ""
         (+"").tap { |s| @index_options&.each { |k, v| s << ", #{k}: #{v.inspect}" } }
       end
 
