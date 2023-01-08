@@ -26,8 +26,9 @@ module Rails
         timestamp
         token
       )
+      OPTIONS_RE = /\{(.+?)\}(?![,}])/
       COMMA_NOT_CONTAINED_WITHIN_QUOTES_RE = /,(?![^'"]*['"][^'"]*$)/
-      AVAILABLE_OPTIONS = %w(
+      AVAILABLE_COLUMN_OPTIONS = %w(
         limit
         default
         null
@@ -36,6 +37,22 @@ module Rails
         array
         polymorphic
         foreign_key
+        if_exists
+      )
+      AVAILABLE_INDEX_OPTIONS = %w(
+        unique
+        length
+        order
+        opclass
+        where
+        type
+        using
+        comment
+        algorithm
+        name
+        if_not_exists
+        internal
+        polymorphic
       )
 
       attr_accessor :name, :type
@@ -44,16 +61,18 @@ module Rails
 
       class << self
         def parse(column_definition)
-          optionless_column_definition = column_definition.sub(/\{(.+)\}/, "")
+          optionless_column_definition = column_definition.gsub(OPTIONS_RE, "")
           name, type, index_type = optionless_column_definition.split(":")
-          column_options = column_definition[/\{(.+)\}/, 1]
-
           # if user provided "name:index" instead of "name:string:index"
           # type should be set blank so GeneratedAttribute's constructor
           # could set it to :string
           index_type, type = type, nil if valid_index_type?(type)
 
-          type, attr_options = *parse_type_and_options(type, column_options)
+          column_options_definition = (column_definition[/#{type}\{(.+?)\}(?:$|:)/, 1] if type) || {}
+          index_options_definition = (column_definition[/#{index_type}\{(.+?)\}$/, 1] if index_type) || {}
+
+          type, attr_options = *parse_column_type_and_options(type, column_options_definition)
+          index_options = parse_index_type_and_options(index_type, index_options_definition)
           type = type.to_sym if type
 
           if type && !valid_type?(type)
@@ -64,13 +83,7 @@ module Rails
             raise Error, "Could not generate field '#{name}' with unknown index '#{index_type}'."
           end
 
-          if type && reference?(type)
-            if UNIQ_INDEX_OPTIONS.include?(index_type)
-              attr_options[:index] = { unique: true }
-            end
-          end
-
-          new(name, type, index_type, attr_options)
+          new(name, type, attr_options, index_options)
         end
 
         def valid_type?(type)
@@ -89,17 +102,42 @@ module Rails
         private
           # parse possible attribute options like :limit for string/text/binary/integer, :precision/:scale for decimals or :polymorphic for references/belongs_to
           # when declaring options curly brackets should be used
-          def parse_type_and_options(type, options)
+          def parse_column_type_and_options(type, column_options)
             case
-            when options.blank?
+            when column_options.blank?
               [ type, {} ]
-            when %w[string text binary integer].include?(type) && options.match?(/^\d+$/)
-              [ type, limit: options.to_i ]
-            when %w[decimal numeric].include?(type) && options.match?(/^(\d+)[,.-](\d+)$/)
-              precision, scale = options.split(/[,.-]/)
+            when %w[string text binary integer].include?(type) && column_options.match?(/^\d+$/)
+              [ type, limit: column_options.to_i ]
+            when %w[decimal numeric].include?(type) && column_options.match?(/^(\d+)[,.-](\d+)$/)
+              precision, scale = column_options.split(/[,.-]/)
               [ :decimal, precision: precision.to_i, scale: scale.to_i ]
             else
-              [ type, parse_attr_options(options).to_h.deep_symbolize_keys ]
+              [ type, parse_attr_options(column_options).to_h.deep_symbolize_keys ]
+            end
+          end
+
+          def parse_index_type_and_options(index_type, index_options)
+            passed_options = if index_type.nil?
+              false
+            elsif index_options.blank?
+              {}
+            elsif index_options == "{}"
+              {}
+            else
+              provided_options = index_options.split(COMMA_NOT_CONTAINED_WITHIN_QUOTES_RE)
+              provided_options.filter_map do |option|
+                key, value = parse_option(option)
+
+                next unless AVAILABLE_INDEX_OPTIONS.include?(key)
+
+                [key, value]
+              end.to_h.deep_symbolize_keys
+            end
+
+            if UNIQ_INDEX_OPTIONS.include?(index_type)
+              passed_options.merge(unique: true)
+            else
+              passed_options
             end
           end
 
@@ -108,27 +146,27 @@ module Rails
             # e.g. `text{default:'hello, world!'}`
             provided_options = options_str.split(COMMA_NOT_CONTAINED_WITHIN_QUOTES_RE)
             provided_options.filter_map do |option|
-              key, value = parse_attr_option(option)
+              key, value = parse_option(option)
 
-              next unless AVAILABLE_OPTIONS.include?(key)
+              next unless AVAILABLE_COLUMN_OPTIONS.include?(key)
 
               [key, value]
             end
           end
 
-          def parse_attr_option(option)
+          def parse_option(option)
             if option.match(/(.+):\{(.+)\}/)
               key, nested_opt = $1, $2
 
-              [key, Hash[*parse_attr_option(nested_opt)]]
+              [key, Hash[*parse_option(nested_opt)]]
             else
               key, val = option.split(":")
 
-              [key, parse_attr_value(val)]
+              [key, parse_value(val)]
             end
           end
 
-          def parse_attr_value(value)
+          def parse_value(value)
             case value
             when "true"         then true
             when "false"        then false
@@ -142,12 +180,12 @@ module Rails
           end
       end
 
-      def initialize(name, type = nil, index_type = false, attr_options = {})
+      def initialize(name, type = nil, attr_options = {}, index_options = false)
         @name           = name
         @type           = type || :string
-        @has_index      = INDEX_OPTIONS.include?(index_type)
-        @has_uniq_index = UNIQ_INDEX_OPTIONS.include?(index_type)
+        @has_index      = !!index_options
         @attr_options   = attr_options
+        @index_options  = index_options || {}
       end
 
       def field_type
@@ -228,10 +266,6 @@ module Rails
         @has_index
       end
 
-      def has_uniq_index?
-        @has_uniq_index
-      end
-
       def password_digest?
         name == "password" && type == :digest
       end
@@ -261,7 +295,7 @@ module Rails
       end
 
       def inject_index_options
-        has_uniq_index? ? ", unique: true" : ""
+        (+"").tap { |s| @index_options&.each { |k, v| s << ", #{k}: #{v.inspect}" } }
       end
 
       def options_for_migration
