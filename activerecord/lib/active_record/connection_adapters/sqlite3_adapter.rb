@@ -11,8 +11,50 @@ require "active_record/connection_adapters/sqlite3/schema_definitions"
 require "active_record/connection_adapters/sqlite3/schema_dumper"
 require "active_record/connection_adapters/sqlite3/schema_statements"
 
-gem "sqlite3", "~> 1.4"
-require "sqlite3"
+gem "extralite"
+require "extralite"
+
+module Extralite
+  class Database
+    alias_method :original_execute, :execute
+    alias_method :execute, :query
+    alias_method :execute_batch2, :query
+    alias_method :readonly?, :read_only?
+
+    def transaction(mode = :immediate)
+      execute "begin #{mode} transaction"
+
+      if block_given?
+        abort = false
+        begin
+          yield self
+        rescue
+          abort = true
+          raise
+        ensure
+          abort ? rollback : commit
+        end
+      end
+
+      true
+    end
+
+    def commit = execute("commit transaction")
+    def rollback = execute("rollback transaction")
+    def encoding = "UTF-8"
+    def busy_timeout(timeout) = self.busy_timeout=(timeout)
+  end
+
+  class Query
+    alias_method :original_to_a, :to_a
+    alias_method :to_a, :to_a_ary
+    alias_method :reset!, :reset
+    def bind_params(bind_vars) = bind(*bind_vars)
+
+    alias_method :original_columns, :columns
+    def columns = original_columns.map(&:to_s)
+  end
+end
 
 module ActiveRecord
   module ConnectionAdapters # :nodoc:
@@ -29,7 +71,7 @@ module ActiveRecord
 
       class << self
         def new_client(config)
-          ::SQLite3::Database.new(config[:database].to_s, config)
+          ::Extralite::Database.new(config[:database].to_s, config)
         rescue Errno::ENOENT => error
           if error.message.include?("No such file or directory")
             raise ActiveRecord::NoDatabaseError
