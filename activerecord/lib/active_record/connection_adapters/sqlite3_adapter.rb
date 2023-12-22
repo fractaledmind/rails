@@ -11,6 +11,8 @@ require "active_record/connection_adapters/sqlite3/schema_definitions"
 require "active_record/connection_adapters/sqlite3/schema_dumper"
 require "active_record/connection_adapters/sqlite3/schema_statements"
 
+gem "sqlite3", "~> 1.4"
+require "sqlite3"
 gem "extralite"
 require "extralite"
 
